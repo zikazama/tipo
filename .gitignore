@@ -1,0 +1,23 @@
+﻿# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+# Env / secrets
+.env
+.env.*
+!infra/env.example
+*.keystore
+*.jks
+service-account*.json
+# Flutter
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/android/local.properties
+app/android/key.properties
+# Misc
+node_modules/
+.DS_Store
