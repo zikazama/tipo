@@ -31,9 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
   go_router: ^18.0.2
   flutter_riverpod: ^3.4.3
   flutter_map: ^8.3.2
@@ -68,24 +65,18 @@ flutter:
     - assets/icon/tipo-symbol-1024.png
 
   fonts:
+    # Keep the weights we actually paint. Flutter synthesizes the rest; fewer
+    # TTFs means a smaller Slow 4G payload for the web console.
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter-400.ttf
           weight: 400
-        - asset: assets/fonts/Inter-500.ttf
-          weight: 500
         - asset: assets/fonts/Inter-600.ttf
           weight: 600
-        - asset: assets/fonts/Inter-700.ttf
-          weight: 700
     - family: Poppins
       fonts:
-        - asset: assets/fonts/Poppins-500.ttf
-          weight: 500
         - asset: assets/fonts/Poppins-600.ttf
           weight: 600
-        - asset: assets/fonts/Poppins-700.ttf
-          weight: 700
         - asset: assets/fonts/Poppins-800.ttf
           weight: 800
 

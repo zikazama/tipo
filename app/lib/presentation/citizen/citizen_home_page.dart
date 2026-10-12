@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../domain/models.dart';
+import '../state/citizen_providers.dart';
 import '../state/providers.dart';
 import '../widgets/badges.dart';
 import '../widgets/states.dart';

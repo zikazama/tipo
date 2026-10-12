@@ -94,6 +94,25 @@ def run_verification(
             )
         else:
             reasons.append(f"BMKG data for {name}: {desc}, {rain:.0f} mm. Partial support.")
+    elif hazard == "fire":
+        fire_risk = str(bmkg_area.get("fire_risk") or "").lower()
+        dry = rain < 5 or any(w in desc.lower() for w in ("haze", "hot", "dry", "clear", "sunny"))
+        if dry or fire_risk in {"high", "elevated", "severe"}:
+            score += 14
+            risk_bit = f", fire risk {fire_risk}" if fire_risk else ""
+            reasons.append(
+                f"BMKG {source.replace('_', ' ')} for {name} (adm4 {adm4}): {desc}, {rain:.0f} mm{risk_bit}. "
+                "Dry or hazy conditions are consistent with karhutla spread. "
+                "This is weather context, not a live hotspot feed."
+            )
+        elif rain >= 20:
+            score -= 8
+            reasons.append(
+                f"BMKG data for {name} (adm4 {adm4}) shows {desc}, {rain:.0f} mm. "
+                "Wet conditions give weak support for an active land fire."
+            )
+        else:
+            reasons.append(f"BMKG data for {name}: {desc}, {rain:.0f} mm. Partial support for a fire claim.")
     elif hazard == "earthquake":
         place = earthquake.get("place") or "unknown"
         mag = earthquake.get("magnitude")

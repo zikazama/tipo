@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
 import '../../domain/models.dart';
+import '../state/citizen_providers.dart';
 import '../state/providers.dart';
 import '../widgets/states.dart';
 

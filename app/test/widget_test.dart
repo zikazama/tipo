@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tipo/core/theme.dart';
 import 'package:tipo/domain/models.dart';
 import 'package:tipo/presentation/routing/app_router.dart';
+import 'package:tipo/presentation/state/citizen_providers.dart';
 import 'package:tipo/presentation/state/providers.dart';
 
 import 'support/fake_api.dart';
@@ -36,6 +37,8 @@ void main() {
       ),
     );
     if (at != null) router.go(at);
+    await tester.pump();
+    // Second pump finishes deferred citizen loadLibrary() and ops post-frame map mount.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     return router;

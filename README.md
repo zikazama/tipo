@@ -49,7 +49,7 @@ The diagram and the model table are in [docs/architecture.md](docs/architecture.
 | --- | --- |
 | `backend/` | Python API, ADK agents, Dockerfile, pytest |
 | `app/` | Flutter citizen app and operator console |
-| `scenario/` | Dayeuhkolot flood: 25 reports, shelters, BMKG snapshot, simulated media |
+| `scenario/` | Dayeuhkolot flood + Pelalawan karhutla drills, shelters, BMKG snapshots, simulated media |
 | `infra/` | Cloud Run and Firebase scripts, Firestore rules, env example |
 | `docs/` | Architecture, 3-minute demo script, judging map |
 
@@ -73,7 +73,7 @@ flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8091 \
   --dart-define=API_BASE=http://127.0.0.1:8765
 ```
 
-Open the posko console at `http://127.0.0.1:8091`. Press **Replay scenario**. Twenty-five reports stream in over about 78 seconds: one critical flood at Dayeuhkolot, a high ticket at Baleendah, a medium one at Bojongsoang, a small landslide at Cangkuang Wetan, and a separate low-credibility ticket for two old photos.
+Open the posko console at `http://127.0.0.1:8091`. Press **Replay scenario** and pick a drill. The flood drill streams twenty-five reports over about 78 seconds: one critical flood at Dayeuhkolot, a high ticket at Baleendah, a medium one at Bojongsoang, a small landslide at Cangkuang Wetan, and a separate low-credibility ticket for two old photos. The karhutla drill streams twenty peatland-fire reports around Segati, Pelalawan (plus Bunut and Teluk Meranti), with damkar logistics and two old urban-fire photo claims held aside.
 
 The citizen flow is linked from the console (**Citizen app**). On a phone-width window or an Android device it is the home screen. Sample buttons send a Sundanese voice note, a Javanese voice note, a simulated flood photo, or the old-photo case.
 
@@ -128,6 +128,10 @@ Flutter web on Firebase Hosting:
 API_BASE=https://your-cloud-run-url FIREBASE_PROJECT=your-project ./infra/deploy-hosting.sh
 ```
 
+The hosting script builds with `--wasm` (skwasm on Chromium, CanvasKit fallback elsewhere), tree-shakes icons, and strips `*.symbols` from the upload. CanvasKit is loaded from gstatic by default so mobile Slow 4G can download the app JS in parallel. Hosting sends COOP/COEP so skwasm can use workers. For a Vercel copy of `build/web`, keep the same headers as in `tipo-web-deploy/vercel.json`.
+
+Mobile Lighthouse (Moto G / Slow 4G) is dominated by LCP waiting on the Flutter first frame. Without a `--wasm --tree-shake-icons` rebuild, scores stay low even with preload/CDN tweaks — the unshaken MaterialIcons font alone is ~1.6 MB.
+
 `firebase.json` serves `app/build/web` and the rules in `infra/firestore.rules`. Those rules deny all client access; the API uses the Admin SDK.
 
 Firebase in the app is optional. `app/lib/firebase_options.dart` is a placeholder. The project builds with no `google-services.json`. After `flutterfire configure`, pass `--dart-define=USE_FIREBASE=true` and add `firebase_core` / `firebase_messaging`. Until then the three push types (reporter status, nearby alert, operator ticket) are delivered to the in-app inbox, which is what FCM would carry.
@@ -142,7 +146,12 @@ Firebase in the app is optional. `app/lib/firebase_options.dart` is a placeholde
 
 ## Scenario
 
-`scenario/dayeuhkolot_flood.json` is a flood drill for Desa Dayeuhkolot, Kabupaten Bandung, plus Baleendah, Bojongsoang, and a small landslide at Cangkuang Wetan. It includes duplicate reports, one pair of old-photo claims, and Sundanese and Javanese transcripts. Photos are drawn placeholders. Audio files are short tones; the words are in the matching `.txt` files. Regenerate with `python scenario/generate_scenario.py`.
+Two drills ship in `scenario/`. `POST /api/replay` with `{"scenario_id":"..."}` (or the console Replay menu) switches between them.
+
+- `dayeuhkolot_flood.json` — flood drill for Desa Dayeuhkolot, Kabupaten Bandung, plus Baleendah, Bojongsoang, and a small landslide at Cangkuang Wetan. Duplicate reports, old-photo claims, Sundanese and Javanese transcripts. Regenerate with `python scenario/generate_scenario.py`.
+- `pelalawan_karhutla.json` — peatland fire (karhutla) drill for Segati, Kabupaten Pelalawan, plus Bunut and Teluk Meranti. Damkar teams, dry-haze BMKG snapshot, Indonesian and Javanese voice notes, and two old urban-fire photo claims. Regenerate with `python scenario/generate_karhutla_scenario.py`.
+
+Photos are drawn placeholders. Audio files are short tones; the words are in the matching `.txt` files.
 
 BMKG adm4 codes confirmed during the build:
 

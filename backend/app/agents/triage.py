@@ -35,7 +35,7 @@ def priority_score(
     if trapped >= 5:
         vuln_f = 1.0
     cred_f = max(0, min(100, int(credibility))) / 100
-    urgent = 1.0 if any(n in needs for n in ("evacuation", "boat", "medicine")) else 0.35
+    urgent = 1.0 if any(n in needs for n in ("evacuation", "boat", "medicine", "firefighting")) else 0.35
     raw = 100 * (0.34 * sev + 0.24 * people_f + 0.16 * vuln_f + 0.18 * cred_f + 0.08 * urgent)
     capped = credibility < 40
     if capped:
@@ -44,7 +44,7 @@ def priority_score(
 
 
 def _eta(dist_m: float, kind: str) -> int:
-    speed = {"boat": 18, "medical": 28, "logistics": 32}.get(kind, 24)
+    speed = {"boat": 18, "fire": 34, "medical": 28, "logistics": 32}.get(kind, 24)
     minutes = dist_m / 1000 / speed * 60 + 8
     return max(10, int(round(minutes)))
 
@@ -149,6 +149,7 @@ def render_sitrep(incident: dict[str, Any], logistics: dict, team: dict | None, 
             f"- Drinking water: {logistics['water_liters_per_day']} L/day (3 L per person)",
             f"- Ready meals: {logistics['ready_meals']} (2 per person)",
             f"- Boats: {logistics['boats']}",
+            f"- Fire units: {logistics.get('fire_units', 0)}",
             f"- Family kits: {logistics['family_kits']}",
             "",
             "### Suggested assignment",
@@ -187,27 +188,45 @@ def run_triage(
     )
     priority_band = band_for(score)
     boats = 0
-    if incident.get("hazard_type") == "flood" and ("boat" in needs or "evacuation" in needs or trapped):
+    fire_units = 0
+    hazard = incident.get("hazard_type")
+    if hazard == "flood" and ("boat" in needs or "evacuation" in needs or trapped):
         boats = max(1, math.ceil(trapped / 6)) if trapped else 1
+    if hazard == "fire" and ("firefighting" in needs or "evacuation" in needs or trapped or people >= 20):
+        fire_units = max(1, math.ceil(max(people, trapped * 10) / 50))
     logistics = {
         "water_liters_per_day": people * 3,
         "ready_meals": people * 2,
         "boats": boats,
+        "fire_units": fire_units,
         "family_kits": math.ceil(people / 4) if people else 0,
     }
-    kind = "boat" if boats else "medical" if "medicine" in needs else "logistics"
+    if fire_units:
+        kind = "fire"
+    elif boats:
+        kind = "boat"
+    elif "medicine" in needs:
+        kind = "medical"
+    else:
+        kind = "logistics"
     team = _pick_team(kind, float(incident["lat"]), float(incident["lng"]), resources.get("teams") or [])
     standby = None
     if boats >= 2 and team:
         standby = _pick_team("boat", float(incident["lat"]), float(incident["lng"]), resources.get("teams") or [], skip=team["id"])
+    elif fire_units >= 2 and team:
+        standby = _pick_team("fire", float(incident["lat"]), float(incident["lng"]), resources.get("teams") or [], skip=team["id"])
     shelter = _pick_shelter(float(incident["lat"]), float(incident["lng"]), resources.get("shelters") or [])
     reasons = [
         f"Severity {incident.get('severity')}/5, {people} people in the merged claim, credibility {incident.get('credibility')}/100.",
     ]
     if incident.get("vulnerable"):
         reasons.append("Vulnerable groups mentioned: " + ", ".join(incident["vulnerable"]) + ".")
-    if trapped:
+    if trapped and boats:
         reasons.append(f"{trapped} people are described as trapped, so the boat estimate is {boats}.")
+    elif trapped and fire_units:
+        reasons.append(f"{trapped} people are described as trapped in smoke or fire, so the damkar estimate is {fire_units} unit(s).")
+    elif fire_units:
+        reasons.append(f"Karhutla logistics suggest {fire_units} fire unit(s) for this cluster.")
     if capped:
         reasons.append("Priority is capped because credibility is under 40. Do not treat this as a confirmed disaster.")
     elif priority_band in {"critical", "high"}:

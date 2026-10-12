@@ -15,6 +15,7 @@ import '../../core/api.dart';
 import '../../core/theme.dart';
 import '../../domain/insights.dart';
 import '../../domain/models.dart';
+import '../state/citizen_providers.dart';
 import '../state/providers.dart';
 import '../widgets/states.dart';
 import '../widgets/waveform.dart';

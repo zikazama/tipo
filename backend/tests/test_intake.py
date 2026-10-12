@@ -75,3 +75,35 @@ def test_hazard_hint_fills_in_only_when_text_is_silent():
     assert spoken["hazard_type"] == "flood"
     unknown = run_intake({"text": "Tolong.", "hazard_hint": "meteor", "lat": -6.97, "lng": 107.62}, SETTINGS)
     assert unknown["hazard_type"] == "other"
+
+
+def test_karhutla_voice_extracts_fire_and_damkar_need():
+    result = run_intake(
+        {
+            "text": "Tolong, kebakaran lahan gambut di Segati. Asap tebal, 20 rumah terancam. Butuh truk tangki dan evakuasi.",
+            "audio_file": "voice_id_karhutla.wav",
+            "lat": 0.35,
+            "lng": 101.91,
+        },
+        SETTINGS,
+    )
+    assert result["hazard_type"] == "fire"
+    assert result["place_key"] == "segati"
+    assert "firefighting" in result["needs"]
+    assert "evacuation" in result["needs"]
+    assert result["severity"] >= 4
+
+
+def test_javanese_smoke_note_is_fire():
+    result = run_intake(
+        {
+            "text": "Ngapunten, geni ing Segati wis cedhak omah. Ana wong tuwa sing sesuk ora bisa ambegan. Butuh obat lan masker.",
+            "lat": 0.35,
+            "lng": 101.91,
+        },
+        SETTINGS,
+    )
+    assert result["language"] == "jv"
+    assert result["hazard_type"] == "fire"
+    assert "elderly" in result["vulnerable"]
+    assert "medicine" in result["needs"]

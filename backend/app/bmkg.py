@@ -38,7 +38,14 @@ def snapshot() -> dict[str, Any]:
 
 def area_for(place_key: str) -> dict[str, Any]:
     areas = snapshot().get("areas") or {}
-    return dict(areas.get(place_key) or areas.get("dayeuhkolot") or {})
+    if place_key in areas:
+        return dict(areas[place_key])
+    for fallback in ("dayeuhkolot", "segati", "default"):
+        if fallback in areas:
+            return dict(areas[fallback])
+    if areas:
+        return dict(next(iter(areas.values())))
+    return {}
 
 
 def earthquake_snapshot() -> dict[str, Any]:

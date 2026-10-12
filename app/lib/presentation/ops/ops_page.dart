@@ -12,8 +12,8 @@ import '../widgets/badges.dart';
 import '../widgets/states.dart';
 import 'activity_feed.dart';
 import 'incident_detail.dart';
-import 'incident_map.dart';
 import 'incident_queue.dart';
+import 'ops_map.dart' deferred as ops_map;
 import 'ops_widgets.dart';
 
 enum _Section { board, activity }
@@ -35,6 +35,20 @@ class _OpsPageState extends ConsumerState<OpsPage> {
   _Pane _pane = _Pane.queue;
   _Pane _sidePane = _Pane.detail;
   var _acting = false;
+  /// Load flutter_map only after the first board frame (and as a deferred JS/wasm chunk).
+  var _mapReady = false;
+  static Future<void>? _mapLibrary;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _mapLibrary ??= ops_map.loadLibrary();
+      _mapLibrary!.whenComplete(() {
+        if (mounted) setState(() => _mapReady = true);
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +91,9 @@ class _OpsPageState extends ConsumerState<OpsPage> {
       onSort: (s) => setState(() => _sort = s),
       replaying: snap.replay.running,
     );
-    final map = IncidentMap(incidents: snap.incidents, selectedId: selected?.id, onSelect: _select, presence: snap.presence);
+    final map = _mapReady
+        ? ops_map.IncidentMap(incidents: snap.incidents, selectedId: selected?.id, onSelect: _select, presence: snap.presence)
+        : const ColoredBox(color: TipoColors.navyDeep);
     final detail = IncidentDetail(
       key: ValueKey('detail-${selected?.id}'),
       incident: selected,
@@ -161,7 +177,14 @@ class _OpsPageState extends ConsumerState<OpsPage> {
 
     return Column(
       children: [
-        _TopBar(snap: snap, compact: width < 1100, showLogo: !rail, onReplay: _replay, onReset: _reset),
+        _TopBar(
+          snap: snap,
+          compact: width < 1100,
+          showLogo: !rail,
+          onReplay: _replay,
+          onReplayScenario: _replayScenario,
+          onReset: _reset,
+        ),
         _ReplayProgress(replay: snap.replay),
         Expanded(child: body),
       ],
@@ -206,9 +229,31 @@ class _OpsPageState extends ConsumerState<OpsPage> {
   }
 
   Future<void> _replay() async {
-    showToast(context, 'Replaying the Dayeuhkolot flood drill', detail: '25 reports across app, voice, WhatsApp, and PetaBencana.');
+    final snap = ref.read(boardProvider).value;
+    final active = snap?.activeScenario;
+    await _replayScenario(active?.id, active);
+  }
+
+  Future<void> _replayScenario(String? scenarioId, [ScenarioInfo? info]) async {
+    final snap = ref.read(boardProvider).value;
+    ScenarioInfo? chosen = info;
+    if (chosen == null && scenarioId != null && snap != null) {
+      for (final scenario in snap.scenarios) {
+        if (scenario.id == scenarioId) {
+          chosen = scenario;
+          break;
+        }
+      }
+    }
+    chosen ??= snap?.activeScenario;
+    final title = chosen?.title ?? 'drill';
+    final count = chosen?.reports ?? 0;
+    final detail = count > 0
+        ? '$count reports across app, voice, WhatsApp, and PetaBencana.'
+        : 'Reports stream into the posko queue.';
+    showToast(context, 'Replaying $title', detail: detail);
     try {
-      await ref.read(boardProvider.notifier).replay();
+      await ref.read(boardProvider.notifier).replay(scenarioId: scenarioId);
     } catch (error) {
       if (mounted) showToast(context, 'Replay could not start', tone: ToastTone.error, detail: '$error');
     }
@@ -372,11 +417,19 @@ class _Rail extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.snap, required this.compact, required this.showLogo, required this.onReplay, required this.onReset});
+  const _TopBar({
+    required this.snap,
+    required this.compact,
+    required this.showLogo,
+    required this.onReplay,
+    required this.onReplayScenario,
+    required this.onReset,
+  });
   final BoardSnapshot snap;
   final bool compact;
   final bool showLogo;
   final VoidCallback onReplay;
+  final void Function(String? scenarioId, [ScenarioInfo? info]) onReplayScenario;
   final VoidCallback onReset;
 
   @override
@@ -385,6 +438,14 @@ class _TopBar extends StatelessWidget {
     final critical = snap.incidents.where((i) => i.priorityBand == 'critical' && i.status == 'open' && !isSuspect(i)).length;
     final alerts = snap.notifications.where((n) => n.type == 'nearby_alert').length;
     final r = snap.replay;
+    final place = snap.activeScenario?.hazard == 'fire'
+        ? 'Posko Pelalawan · Riau'
+        : 'Posko Dayeuhkolot · Kab. Bandung';
+    final scenarios = snap.scenarios.isNotEmpty
+        ? snap.scenarios
+        : [
+            if (snap.activeScenario != null) snap.activeScenario!,
+          ];
     return Container(
       height: 68,
       padding: const EdgeInsets.symmetric(horizontal: Space.lg),
@@ -406,11 +467,11 @@ class _TopBar extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Posko Dashboard', style: displayStyle(size: 18, color: TipoColors.text)),
-                          const Row(
+                          Row(
                             children: [
-                              Icon(Icons.place_rounded, size: 13, color: TipoColors.orangeSoft),
-                              SizedBox(width: 3),
-                              Text('Posko Dayeuhkolot · Kab. Bandung', style: TextStyle(color: TipoColors.muted, fontSize: 12)),
+                              const Icon(Icons.place_rounded, size: 13, color: TipoColors.orangeSoft),
+                              const SizedBox(width: 3),
+                              Text(place, style: const TextStyle(color: TipoColors.muted, fontSize: 12)),
                             ],
                           ),
                         ],
@@ -445,12 +506,41 @@ class _TopBar extends StatelessWidget {
                   label: const Text('Reset'),
                 ),
           const SizedBox(width: Space.sm),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 42), padding: const EdgeInsets.symmetric(horizontal: Space.lg)),
-            onPressed: r.running ? null : onReplay,
-            icon: Icon(r.running ? Icons.hourglass_top_rounded : Icons.play_arrow_rounded, size: 20),
-            label: Text(r.running ? 'Replaying…' : compact ? 'Replay' : 'Replay scenario'),
-          ),
+          if (scenarios.length > 1)
+            MenuAnchor(
+              builder: (context, controller, child) => FilledButton.icon(
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 42), padding: const EdgeInsets.symmetric(horizontal: Space.lg)),
+                onPressed: r.running
+                    ? null
+                    : () {
+                        if (controller.isOpen) {
+                          controller.close();
+                        } else {
+                          controller.open();
+                        }
+                      },
+                icon: Icon(r.running ? Icons.hourglass_top_rounded : Icons.play_arrow_rounded, size: 20),
+                label: Text(r.running ? 'Replaying…' : compact ? 'Replay' : 'Replay scenario'),
+              ),
+              menuChildren: [
+                for (final scenario in scenarios)
+                  MenuItemButton(
+                    onPressed: () => onReplayScenario(scenario.id, scenario),
+                    leadingIcon: Icon(
+                      scenario.hazard == 'fire' ? Icons.local_fire_department_rounded : Icons.flood_rounded,
+                      size: 18,
+                    ),
+                    child: Text('${scenario.title} (${scenario.reports})'),
+                  ),
+              ],
+            )
+          else
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 42), padding: const EdgeInsets.symmetric(horizontal: Space.lg)),
+              onPressed: r.running ? null : onReplay,
+              icon: Icon(r.running ? Icons.hourglass_top_rounded : Icons.play_arrow_rounded, size: 20),
+              label: Text(r.running ? 'Replaying…' : compact ? 'Replay' : 'Replay scenario'),
+            ),
         ],
       ),
     );

@@ -103,15 +103,23 @@ class Incident {
 }
 
 class Logistics {
-  const Logistics({this.waterLitersPerDay = 0, this.readyMeals = 0, this.boats = 0, this.familyKits = 0});
+  const Logistics({
+    this.waterLitersPerDay = 0,
+    this.readyMeals = 0,
+    this.boats = 0,
+    this.fireUnits = 0,
+    this.familyKits = 0,
+  });
   final int waterLitersPerDay;
   final int readyMeals;
   final int boats;
+  final int fireUnits;
   final int familyKits;
   factory Logistics.fromJson(Map<String, dynamic> json) => Logistics(
         waterLitersPerDay: asInt(json['water_liters_per_day']),
         readyMeals: asInt(json['ready_meals']),
         boats: asInt(json['boats']),
+        fireUnits: asInt(json['fire_units']),
         familyKits: asInt(json['family_kits']),
       );
 }
@@ -339,14 +347,49 @@ class ReportSample {
 }
 
 class ReplayStatus {
-  const ReplayStatus({this.running = false, this.ingested = 0, this.total = 25});
+  const ReplayStatus({
+    this.running = false,
+    this.ingested = 0,
+    this.total = 25,
+    this.scenarioId = '',
+    this.scenarioTitle = '',
+  });
   final bool running;
   final int ingested;
   final int total;
+  final String scenarioId;
+  final String scenarioTitle;
   factory ReplayStatus.fromJson(Map<String, dynamic> json) => ReplayStatus(
         running: json['running'] == true,
         ingested: asInt(json['ingested']),
         total: asInt(json['total'], 25),
+        scenarioId: '${json['scenario_id'] ?? ''}',
+        scenarioTitle: '${json['scenario_title'] ?? ''}',
+      );
+}
+
+class ScenarioInfo {
+  const ScenarioInfo({
+    required this.id,
+    required this.title,
+    this.summary = '',
+    this.hazard = '',
+    this.reports = 0,
+    this.active = false,
+  });
+  final String id;
+  final String title;
+  final String summary;
+  final String hazard;
+  final int reports;
+  final bool active;
+  factory ScenarioInfo.fromJson(Map<String, dynamic> json) => ScenarioInfo(
+        id: '${json['id'] ?? ''}',
+        title: '${json['title'] ?? json['id'] ?? ''}',
+        summary: '${json['summary'] ?? ''}',
+        hazard: '${json['hazard'] ?? ''}',
+        reports: asInt(json['reports']),
+        active: json['active'] == true,
       );
 }
 
@@ -359,6 +402,8 @@ class BoardSnapshot {
     required this.mode,
     required this.model,
     this.presence = const [],
+    this.scenarios = const [],
+    this.activeScenario,
   });
 
   /// Standby devices the posko can reach with a nearby alert.
@@ -369,10 +414,32 @@ class BoardSnapshot {
   final ReplayStatus replay;
   final String mode;
   final String model;
+  final List<ScenarioInfo> scenarios;
+  final ScenarioInfo? activeScenario;
 
   factory BoardSnapshot.fromJson(Map<String, dynamic> json) {
     final meta = asMap(json['meta']);
     final models = asMap(meta['models']);
+    final scenarios = (meta['scenarios'] as List? ?? const []).map((e) => ScenarioInfo.fromJson(asMap(e))).toList();
+    final activeMeta = asMap(meta['scenario']);
+    ScenarioInfo? active;
+    if (activeMeta.isNotEmpty) {
+      active = ScenarioInfo(
+        id: '${activeMeta['id'] ?? ''}',
+        title: '${activeMeta['title'] ?? ''}',
+        summary: '${activeMeta['summary'] ?? ''}',
+        hazard: '${activeMeta['hazard'] ?? ''}',
+        reports: asInt(activeMeta['reports']),
+        active: true,
+      );
+    } else {
+      for (final s in scenarios) {
+        if (s.active) {
+          active = s;
+          break;
+        }
+      }
+    }
     return BoardSnapshot(
       incidents: (json['incidents'] as List? ?? const []).map((e) => Incident.fromJson(asMap(e))).toList(),
       reports: (json['reports'] as List? ?? const []).map((e) => CitizenReport.fromJson(asMap(e))).toList(),
@@ -384,6 +451,8 @@ class BoardSnapshot {
           .map((e) => asMap(e))
           .map((m) => GeoPoint(id: '${m['reporter_id'] ?? ''}', lat: asDouble(m['lat']), lng: asDouble(m['lng'])))
           .toList(),
+      scenarios: scenarios,
+      activeScenario: active,
     );
   }
 }

@@ -6,7 +6,6 @@ import '../../domain/models.dart';
 import '../widgets/badges.dart';
 import '../widgets/states.dart';
 import '../widgets/waveform.dart';
-import 'incident_map.dart' show isSuspect;
 import 'ops_widgets.dart';
 import 'sitrep_page.dart';
 
@@ -717,7 +716,10 @@ class _LogisticsTab extends StatelessWidget {
           children: [
             StatTile(value: '${l.waterLitersPerDay} L', label: 'drinking water / day', icon: Icons.water_drop_rounded, accent: TipoColors.info),
             StatTile(value: '${l.readyMeals}', label: 'ready meals', icon: Icons.restaurant_rounded),
-            StatTile(value: '${l.boats}', label: 'rescue boats', icon: Icons.directions_boat_rounded, accent: TipoColors.lowOnDark),
+            if (i.hazardType == 'fire' || l.fireUnits > 0)
+              StatTile(value: '${l.fireUnits}', label: 'damkar units', icon: Icons.local_fire_department_rounded, accent: TipoColors.criticalOnDark)
+            else
+              StatTile(value: '${l.boats}', label: 'rescue boats', icon: Icons.directions_boat_rounded, accent: TipoColors.lowOnDark),
             StatTile(value: '${l.familyKits}', label: 'family kits', icon: Icons.medical_services_rounded, accent: TipoColors.mediumOnDark),
           ],
         ),

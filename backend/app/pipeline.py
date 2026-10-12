@@ -37,14 +37,77 @@ class Pipeline:
         self.store = store
         self.media = media
         self.notifier = notifier
-        self.scenario = self._load_scenario()
+        self.scenarios = self._discover_scenarios()
+        default_id = self._default_scenario_id()
+        self.scenario_id = default_id
+        self.scenario = self._activate(default_id)
 
-    def _load_scenario(self) -> dict[str, Any]:
+    def _discover_scenarios(self) -> dict[str, dict[str, Any]]:
         import json
 
-        data = json.loads(self.settings.scenario_path.read_text(encoding="utf-8"))
+        folder = self.settings.scenario_path.parent
+        found: dict[str, dict[str, Any]] = {}
+        paths = {self.settings.scenario_path.resolve()}
+        if folder.is_dir():
+            paths.update(p.resolve() for p in folder.glob("*.json"))
+        for path in sorted(paths, key=lambda p: p.name):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict) or not data.get("reports"):
+                continue
+            sid = str(data.get("id") or path.stem)
+            data = dict(data)
+            data["_path"] = str(path)
+            found[sid] = data
+        if not found:
+            raise FileNotFoundError(f"No scenario JSON found next to {self.settings.scenario_path}")
+        return found
+
+    def _default_scenario_id(self) -> str:
+        import json
+
+        try:
+            data = json.loads(self.settings.scenario_path.read_text(encoding="utf-8"))
+            sid = str(data.get("id") or self.settings.scenario_path.stem)
+            if sid in self.scenarios:
+                return sid
+        except (OSError, json.JSONDecodeError, KeyError):
+            pass
+        if "dayeuhkolot-flood-2026" in self.scenarios:
+            return "dayeuhkolot-flood-2026"
+        return next(iter(self.scenarios))
+
+    def list_scenarios(self) -> list[dict[str, Any]]:
+        items = []
+        for sid, data in self.scenarios.items():
+            items.append(
+                {
+                    "id": sid,
+                    "title": data.get("title") or sid,
+                    "summary": data.get("summary") or "",
+                    "hazard": data.get("hazard") or "",
+                    "reports": len(data.get("reports") or []),
+                    "active": sid == self.scenario_id,
+                }
+            )
+        items.sort(key=lambda item: (0 if "flood" in item["id"] else 1, item["title"]))
+        return items
+
+    def _activate(self, scenario_id: str) -> dict[str, Any]:
+        if scenario_id not in self.scenarios:
+            raise KeyError(scenario_id)
+        data = self.scenarios[scenario_id]
         bind_snapshot(data.get("bmkg") or {})
         self.store.resources = data.get("resources") or {"teams": [], "shelters": []}
+        self.scenario_id = scenario_id
+        self.scenario = data
+        return data
+
+    def set_scenario(self, scenario_id: str) -> dict[str, Any]:
+        data = self._activate(scenario_id)
+        self.reset()
         return data
 
     def seed_presence(self) -> None:

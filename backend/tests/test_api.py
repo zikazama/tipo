@@ -17,9 +17,16 @@ def test_health_is_mock(client):
 
 
 def test_replay_clusters_hoax_and_holds_alerts(client):
+    catalog = client.get("/api/scenarios").json()
+    assert catalog["active"] == "dayeuhkolot-flood-2026"
+    assert {item["id"] for item in catalog["scenarios"]} >= {
+        "dayeuhkolot-flood-2026",
+        "pelalawan-karhutla-2026",
+    }
     replayed = client.post("/api/replay?wait=true")
     assert replayed.status_code == 200
     assert replayed.json()["ingested"] == 25
+    assert replayed.json()["scenario_id"] == "dayeuhkolot-flood-2026"
     state = client.get("/api/state").json()
     assert state["replay"]["total"] == 25
     dayeuh = _incident_with(state, "rpt-01")
@@ -53,6 +60,48 @@ def test_replay_clusters_hoax_and_holds_alerts(client):
     assert "reporter_status" not in types
     span = sum(item["delay_s"] for item in client.app.state.pipeline.scenario["reports"])
     assert 60 <= span <= 90
+
+
+def test_karhutla_replay_clusters_and_suggests_damkar(client):
+    replayed = client.post(
+        "/api/replay?wait=true",
+        json={"scenario_id": "pelalawan-karhutla-2026"},
+    )
+    assert replayed.status_code == 200
+    body = replayed.json()
+    assert body["ingested"] == 20
+    assert body["scenario_id"] == "pelalawan-karhutla-2026"
+    state = client.get("/api/state").json()
+    assert state["meta"]["scenario"]["id"] == "pelalawan-karhutla-2026"
+    segati = _incident_with(state, "kh-01")
+    assert segati["hazard_type"] == "fire"
+    assert "kh-11" in segati["report_ids"]
+    assert "kh-20" in segati["report_ids"]
+    assert len(segati["report_ids"]) == 12
+    assert "kh-18" not in segati["report_ids"]
+    assert segati["priority_band"] == "critical"
+    assert segati["people_affected"] == 80
+    assert segati["logistics"]["fire_units"] >= 2
+    assert segati["logistics"]["boats"] == 0
+    assert (segati.get("suggested_team") or {}).get("kind") == "fire"
+    assert "voice" in segati["channels"] and "petabencana" in segati["channels"]
+    hoax = _incident_with(state, "kh-18")
+    assert hoax["id"] != segati["id"]
+    assert "kh-19" in hoax["report_ids"]
+    assert hoax["credibility"] < 40
+    bunut = _incident_with(state, "kh-12")
+    assert bunut["hazard_type"] == "fire"
+    assert "kh-15" in bunut["report_ids"]
+    languages = {r["id"]: r["language"] for r in state["reports"]}
+    assert languages["kh-03"] == "id"
+    assert languages["kh-06"] == "jv"
+    span = sum(item["delay_s"] for item in client.app.state.pipeline.scenario["reports"])
+    assert 60 <= span <= 90
+    # Switching back to the flood drill must restore that scenario.
+    flood = client.post("/api/replay?wait=true", json={"scenario_id": "dayeuhkolot-flood-2026"})
+    assert flood.status_code == 200
+    assert flood.json()["scenario_id"] == "dayeuhkolot-flood-2026"
+    assert flood.json()["ingested"] == 25
 
 
 def test_approve_sends_alerts_and_reject_does_not(client):

@@ -47,9 +47,18 @@ class TipoApi {
     return Incident.fromJson(json);
   }
 
-  Future<ReplayStatus> replay() async {
-    final json = await _send('POST', '/api/replay', {});
+  Future<ReplayStatus> replay({String? scenarioId}) async {
+    final body = <String, dynamic>{};
+    if (scenarioId != null && scenarioId.isNotEmpty) {
+      body['scenario_id'] = scenarioId;
+    }
+    final json = await _send('POST', '/api/replay', body);
     return ReplayStatus.fromJson(json);
+  }
+
+  Future<List<ScenarioInfo>> scenarios() async {
+    final json = await _get('/api/scenarios');
+    return (json['scenarios'] as List? ?? const []).map((e) => ScenarioInfo.fromJson(asMap(e))).toList();
   }
 
   Future<void> reset() async {

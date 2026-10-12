@@ -4,10 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
-import '../citizen/citizen_home_page.dart';
-import '../citizen/inbox_page.dart';
-import '../citizen/my_reports_page.dart';
-import '../citizen/report_page.dart';
+import '../citizen/citizen.dart' deferred as citizen;
 import '../ops/ops_page.dart';
 import '../ops/sitrep_page.dart';
 import '../widgets/brand.dart';
@@ -21,13 +18,16 @@ GoRouter createRouter() {
           child: CitizenTabs(location: state.uri.path, child: child),
         ),
         routes: [
-          GoRoute(path: '/', pageBuilder: (context, state) => _fade(state, const CitizenHomePage())),
-          GoRoute(path: '/report', pageBuilder: (context, state) => _slide(state, const ReportPage())),
-          GoRoute(path: '/mine', pageBuilder: (context, state) => _fade(state, const MyReportsPage())),
-          GoRoute(path: '/inbox', pageBuilder: (context, state) => _fade(state, const InboxPage())),
+          GoRoute(path: '/', pageBuilder: (context, state) => _fade(state, _DeferredCitizen(builder: () => citizen.CitizenHomePage()))),
+          GoRoute(path: '/report', pageBuilder: (context, state) => _slide(state, _DeferredCitizen(builder: () => citizen.ReportPage()))),
+          GoRoute(path: '/mine', pageBuilder: (context, state) => _fade(state, _DeferredCitizen(builder: () => citizen.MyReportsPage()))),
+          GoRoute(path: '/inbox', pageBuilder: (context, state) => _fade(state, _DeferredCitizen(builder: () => citizen.InboxPage()))),
           GoRoute(
             path: '/mine/:id',
-            pageBuilder: (context, state) => _slide(state, ReportStatusPage(reportId: state.pathParameters['id']!)),
+            pageBuilder: (context, state) => _slide(
+              state,
+              _DeferredCitizen(builder: () => citizen.ReportStatusPage(reportId: state.pathParameters['id']!)),
+            ),
           ),
         ],
       ),
@@ -41,6 +41,48 @@ GoRouter createRouter() {
       ),
     ],
   );
+}
+
+/// Loads the citizen deferred library once, then builds the screen.
+class _DeferredCitizen extends StatefulWidget {
+  const _DeferredCitizen({required this.builder});
+  final Widget Function() builder;
+
+  @override
+  State<_DeferredCitizen> createState() => _DeferredCitizenState();
+}
+
+class _DeferredCitizenState extends State<_DeferredCitizen> {
+  static Future<void>? _library;
+
+  @override
+  void initState() {
+    super.initState();
+    _library ??= citizen.loadLibrary();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _library,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Scaffold(
+            body: Center(
+              child: Text('Failed to load citizen app:\n${snap.error}', textAlign: TextAlign.center),
+            ),
+          );
+        }
+        if (snap.connectionState != ConnectionState.done) {
+          return const ColoredBox(
+            color: TipoColors.navyDeep,
+            child: Center(child: CircularProgressIndicator(color: TipoColors.orange)),
+          );
+        }
+        return widget.builder();
+      },
+    );
+  }
 }
 
 CustomTransitionPage<void> _fade(GoRouterState state, Widget child) => CustomTransitionPage(

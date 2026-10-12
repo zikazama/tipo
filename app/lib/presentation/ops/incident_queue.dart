@@ -4,7 +4,7 @@ import '../../core/theme.dart';
 import '../../domain/models.dart';
 import '../widgets/badges.dart';
 import '../widgets/states.dart';
-import 'incident_map.dart' show isSuspect;
+import '../../domain/insights.dart' show isSuspect;
 import 'ops_widgets.dart';
 
 enum QueueSort { priority, credibility, reports, newest }
@@ -127,7 +127,7 @@ class IncidentQueue extends StatelessWidget {
                         icon: all.isEmpty ? Icons.waves_rounded : Icons.filter_alt_off_rounded,
                         title: all.isEmpty ? 'Queue is clear' : 'Nothing matches this filter',
                         body: all.isEmpty
-                            ? 'Replay the Dayeuhkolot flood drill from the top bar, or wait for a citizen report.'
+                            ? 'Pick a flood or karhutla drill from Replay, or wait for a citizen report.'
                             : 'Switch back to All to see every open ticket.',
                       ))
                 : ListView.separated(

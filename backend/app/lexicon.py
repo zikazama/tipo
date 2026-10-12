@@ -16,7 +16,7 @@ SUNDA = {
 }
 JAVA = {
     "ngapunten", "banyu", "dengkul", "dalan", "lara", "nganti", "dodo", "wis",
-    "sing", "peteng",
+    "sing", "peteng", "geni", "omahe", "omah", "cedhak", "sesuk", "ambegan",
 }
 VULNERABLE = (
     ("elderly", ("lansia", "kolot", "wong tuwa", "elderly", "nenek", "kakek")),
@@ -27,8 +27,9 @@ VULNERABLE = (
 
 NEEDS = (
     ("boat", ("perahu", "boat", "karet")),
+    ("firefighting", ("damkar", "pemadam", "truk tangki", "manggala agni", "firefight", "water bombing", "apd")),
     ("evacuation", ("evakuasi", "mengungsi", "evacuation")),
-    ("medicine", ("obat", "medicine", "puskesmas", "klinik")),
+    ("medicine", ("obat", "medicine", "puskesmas", "klinik", "masker", "sesak")),
     ("water", ("air minum", "air bersih", "drinking water")),
     ("food", ("makanan", "sembako", "food")),
 )
@@ -38,6 +39,9 @@ PLACE_KEYS = (
     ("bojongsoang", ("bojongsoang",)),
     ("baleendah", ("baleendah", "andir")),
     ("dayeuhkolot", ("dayeuhkolot", "sukabirus", "al-ikhlas", "al ikhlas", "pasawahan")),
+    ("telukmeranti", ("teluk meranti", "telukmeranti")),
+    ("bunut", ("bunut",)),
+    ("segati", ("segati",)),
 )
 
 
@@ -70,7 +74,21 @@ def detect_hazard(text: str) -> str:
         return "landslide"
     if any(w in low for w in ("gempa", "lindu", "earthquake")):
         return "earthquake"
-    if any(w in low for w in ("karhutla", "kebakaran hutan", "wildfire")):
+    if any(
+        w in low
+        for w in (
+            "karhutla",
+            "kebakaran hutan",
+            "kebakaran lahan",
+            "lahan gambut",
+            "gambut terbakar",
+            "wildfire",
+            "peatland fire",
+            "hotspot",
+            "asap tebal",
+            "menjalar",
+        )
+    ) or re.search(r"\b(geni|kebakaran|asap)\b", low) is not None:
         return "fire"
     if (
         any(w in low for w in ("banjir", "caah", "banyu", "flood", "terendam", "setinggi"))
@@ -102,8 +120,11 @@ def detect_needs(text: str) -> list[str]:
     if trapped_word:
         if "evacuation" not in found:
             found.append("evacuation")
-        if "boat" not in found and detect_hazard(text) == "flood":
+        hazard = detect_hazard(text)
+        if "boat" not in found and hazard == "flood":
             found.append("boat")
+        if "firefighting" not in found and hazard == "fire":
+            found.append("firefighting")
     return found
 
 
@@ -118,13 +139,13 @@ def place_key(text: str, place_name: str = "") -> str:
 def severity_hint(text: str) -> int:
     low = text.lower()
     trapped = any(_mentioned(low, w) for w in ("terjebak", "kejebak", "kepepet"))
-    if any(w in low for w in ("setinggi rumah", "setinggi atap", "nyawa", "kritis")):
+    if any(w in low for w in ("setinggi rumah", "setinggi atap", "nyawa", "kritis", "mengepung rumah", "menjalar ke permukiman")):
         return 5
-    if trapped or any(w in low for w in ("dada", "dodo", "chest", "lantai dua", "lantai 2")):
+    if trapped or any(w in low for w in ("dada", "dodo", "chest", "lantai dua", "lantai 2", "sesak", "ambegan")):
         return 5
-    if any(w in low for w in ("pinggang", "waist")):
+    if any(w in low for w in ("pinggang", "waist", "asap tebal", "rumah terancam", "cedhak omah")):
         return 4
-    if any(w in low for w in ("lutut", "dengkul", "knee", "masuk ke rumah", "terendam")):
+    if any(w in low for w in ("lutut", "dengkul", "knee", "masuk ke rumah", "terendam", "asap", "hotspot")):
         return 3
     if any(w in low for w in ("naik", "rising", "mulai", "bergerak")):
         return 2

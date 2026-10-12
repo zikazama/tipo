@@ -15,7 +15,7 @@ Google Cloud AI Builder Cup 2026, Sustainability theme. Weights below are the on
 
 - The user is the posko operator, not another public map. BNPB's 1,730 disasters in 2026 and BPBD Bali's own AI training for situation reports are the need.
 - Impact shown in the product: duplicate reports become one ticket, an old photo is held aside with reasons, logistics and a team are suggested, and a sitrep is one click instead of an hour of copy-paste.
-- The Dayeuhkolot scenario is a real flood-prone kelurahan on the Citarum, with adm4 codes checked against BMKG.
+- The Dayeuhkolot scenario is a real flood-prone kelurahan on the Citarum, with adm4 codes checked against BMKG. A second Pelalawan karhutla drill shows the same operator loop on peatland fire.
 
 ## Innovation — 25%
 

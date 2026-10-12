@@ -5,6 +5,9 @@ import 'models.dart';
 /// Same default radius the API uses for nearby alerts (TIPO_NEARBY_RADIUS_M).
 const nearbyRadiusM = 2000.0;
 
+/// Low-credibility tickets stay out of the confirmed queue / alert path.
+bool isSuspect(Incident i) => i.credibility < 40;
+
 double haversineM(double lat1, double lng1, double lat2, double lng2) {
   const r = 6371000.0;
   double rad(double d) => d * math.pi / 180;

@@ -10,8 +10,6 @@ import '../../domain/models.dart';
 
 const _drillCenter = LatLng(-6.985, 107.628);
 
-bool isSuspect(Incident i) => i.credibility < 40;
-
 class IncidentMap extends StatefulWidget {
   const IncidentMap({super.key, required this.incidents, required this.selectedId, required this.onSelect, this.presence = const []});
   final List<Incident> incidents;

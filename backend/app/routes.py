@@ -80,16 +80,25 @@ def health(request: Request) -> dict[str, Any]:
 @router.get("/api/meta")
 def meta(request: Request) -> dict[str, Any]:
     info = health(request)
-    scenario = request.app.state.pipeline.scenario
+    pipeline = request.app.state.pipeline
+    scenario = pipeline.scenario
     info["scenario"] = {
         "id": scenario.get("id"),
         "title": scenario.get("title"),
+        "hazard": scenario.get("hazard") or "",
+        "summary": scenario.get("summary") or "",
         "reports": len(scenario.get("reports") or []),
-        "tagline": "Read the signs. Act first.",
-        "place": "Dayeuhkolot, Kabupaten Bandung",
+        "tagline": scenario.get("tagline") or "Read the signs. Act first.",
     }
+    info["scenarios"] = pipeline.list_scenarios()
     info["replay"] = request.app.state.replay.status()
     return info
+
+
+@router.get("/api/scenarios")
+def scenarios(request: Request) -> dict[str, Any]:
+    pipeline = request.app.state.pipeline
+    return {"scenarios": pipeline.list_scenarios(), "active": pipeline.scenario_id}
 
 
 @router.get("/api/state")
@@ -218,11 +227,22 @@ def notifications(
 
 
 @router.post("/api/replay")
-async def replay(request: Request, wait: bool = False) -> dict[str, Any]:
+async def replay(request: Request, wait: bool = False, scenario_id: str | None = None) -> dict[str, Any]:
     engine = request.app.state.replay
+    chosen = scenario_id
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict) and payload.get("scenario_id"):
+            chosen = chosen or str(payload["scenario_id"])
+    if chosen and chosen not in request.app.state.pipeline.scenarios:
+        raise HTTPException(status_code=404, detail=f"Unknown scenario: {chosen}")
     if wait:
-        return await engine.run()
-    engine.kick()
+        return await engine.run(scenario_id=chosen)
+    engine.kick(scenario_id=chosen)
     return engine.status() | {"started": True}
 
 

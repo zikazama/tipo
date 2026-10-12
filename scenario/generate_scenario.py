@@ -197,6 +197,7 @@ def build() -> dict:
     return {
         "id": "dayeuhkolot-flood-2026",
         "title": "Flood drill — Dayeuhkolot, Kabupaten Bandung",
+        "hazard": "flood",
         "tagline": "Read the signs. Act first.",
         "summary": (
             "Twenty-five simulated citizen reports of a Citarum flood at Dayeuhkolot, "

@@ -23,6 +23,9 @@ PLACE_LABEL = {
     "baleendah": "Baleendah, Kabupaten Bandung, West Java",
     "bojongsoang": "Bojongsoang, Kabupaten Bandung, West Java",
     "cangkuang": "Cangkuang Wetan, Kabupaten Bandung, West Java",
+    "segati": "Segati, Kabupaten Pelalawan, Riau",
+    "bunut": "Bunut, Kabupaten Pelalawan, Riau",
+    "telukmeranti": "Teluk Meranti, Kabupaten Pelalawan, Riau",
     "unknown": "Unconfirmed location",
 }
 

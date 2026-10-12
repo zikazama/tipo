@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../domain/insights.dart';
+import '../state/citizen_providers.dart';
 import '../state/providers.dart';
 import '../widgets/states.dart';
 import 'citizen_home_page.dart';
