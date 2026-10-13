@@ -1,6 +1,7 @@
 import 'package:tipo/core/api.dart';
 import 'package:tipo/core/location.dart';
 import 'package:tipo/domain/models.dart';
+import 'package:tipo/presentation/state/citizen_providers.dart';
 
 class FakeTipoApi extends TipoApi {
   FakeTipoApi({this.board}) : super(base: 'http://127.0.0.1:9');
@@ -18,7 +19,7 @@ class FakeTipoApi extends TipoApi {
   Future<void> presence({required String reporterId, required double lat, required double lng}) async {}
 
   @override
-  Future<ReplayStatus> replay() async => const ReplayStatus();
+  Future<ReplayStatus> replay({String? scenarioId}) async => ReplayStatus(scenarioId: scenarioId ?? '');
 
   @override
   Future<void> reset() async {}
@@ -46,6 +47,15 @@ class FakeTipoApi extends TipoApi {
           ],
         },
       };
+}
+
+/// Stable reporter id for widget tests (no async restore race).
+class TestReporterController extends ReporterController {
+  @override
+  String build() => 'warga-01';
+
+  @override
+  Future<String> ready() async => 'warga-01';
 }
 
 class NoGpsLocator extends Locator {

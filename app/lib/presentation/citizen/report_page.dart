@@ -13,14 +13,14 @@ import 'package:record/record.dart';
 
 import '../../core/api.dart';
 import '../../core/theme.dart';
+import '../../domain/citizen_context.dart';
 import '../../domain/insights.dart';
 import '../../domain/models.dart';
 import '../state/citizen_providers.dart';
 import '../state/providers.dart';
+import '../widgets/citizen_layout.dart';
 import '../widgets/states.dart';
 import '../widgets/waveform.dart';
-
-const _drillCenter = (-6.9755, 107.6250);
 
 class ReportPage extends ConsumerStatefulWidget {
   const ReportPage({super.key});
@@ -32,22 +32,18 @@ class ReportPage extends ConsumerStatefulWidget {
 class _ReportPageState extends ConsumerState<ReportPage> {
   final _text = TextEditingController();
   final _recorder = AudioRecorder();
-  static const _places = {
-    'Dayeuhkolot': (-6.9755, 107.6250),
-    'Baleendah': (-7.0045, 107.6302),
-    'Bojongsoang': (-6.9986, 107.6510),
-  };
   static const _hazards = [
     ('flood', 'Banjir', 'Flood'),
     ('landslide', 'Longsor', 'Landslide'),
     ('earthquake', 'Gempa', 'Earthquake'),
-    ('fire', 'Kebakaran', 'Fire'),
+    ('fire', 'Karhutla / kebakaran', 'Fire'),
     ('other', 'Lainnya', 'Other'),
   ];
 
+  CitizenContext _ctx = CitizenContext.flood;
   String? _hazard;
-  String _place = 'Dayeuhkolot';
-  (double, double) _pin = _places['Dayeuhkolot']!;
+  String _place = CitizenContext.flood.placeShort;
+  (double, double) _pin = (CitizenContext.flood.lat, CitizenContext.flood.lng);
   String _gps = 'locating';
   double? _gpsAccuracy;
   String _language = 'auto';
@@ -71,12 +67,31 @@ class _ReportPageState extends ConsumerState<ReportPage> {
   Timer? _ticker;
   StreamSubscription<Amplitude>? _amp;
   List<ReportSample> _samples = const [];
+  var _syncedScenario = false;
+
+  Map<String, (double, double)> get _places => _ctx.places;
 
   @override
   void initState() {
     super.initState();
+    Future.microtask(_syncScenario);
     Future.microtask(_loadSamples);
     Future.microtask(_locate);
+  }
+
+  void _syncScenario() {
+    final snap = ref.read(boardProvider).value;
+    final next = CitizenContext.fromScenario(snap?.activeScenario);
+    if (!mounted) return;
+    setState(() {
+      _ctx = next;
+      if (!_syncedScenario || !_places.containsKey(_place)) {
+        _place = next.placeShort;
+        if (_gps != 'gps') _pin = (next.lat, next.lng);
+        if (_hazard == null && next.isFire) _hazard = 'fire';
+      }
+      _syncedScenario = true;
+    });
   }
 
   @override
@@ -103,7 +118,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
       setState(() => _gps = 'unavailable');
       return;
     }
-    final inDrill = haversineM(point.lat, point.lng, _drillCenter.$1, _drillCenter.$2) < 25000;
+    final inDrill = haversineM(point.lat, point.lng, _ctx.lat, _ctx.lng) < 40000;
     setState(() {
       if (inDrill) {
         _pin = (point.lat, point.lng);
@@ -131,6 +146,15 @@ class _ReportPageState extends ConsumerState<ReportPage> {
 
   void _applySample(ReportSample sample) {
     HapticFeedback.selectionClick();
+    final hint = sample.hazardHint.toLowerCase();
+    final placeLower = sample.placeName.toLowerCase();
+    var place = _ctx.placeShort;
+    for (final name in _places.keys) {
+      if (placeLower.contains(name.toLowerCase().split(' ').first.toLowerCase())) {
+        place = name;
+        break;
+      }
+    }
     setState(() {
       _text.text = sample.text;
       _channel = sample.channel;
@@ -145,9 +169,9 @@ class _ReportPageState extends ConsumerState<ReportPage> {
       _clipLength = sample.audioFile == null ? null : const Duration(seconds: 9);
       _cues = sample.imageCues;
       _exif = sample.exif;
-      _hazard = 'flood';
+      _hazard = hint.isNotEmpty ? hint : (_ctx.isFire ? 'fire' : 'flood');
       _error = null;
-      _place = sample.placeName.toLowerCase().contains('bale') ? 'Baleendah' : 'Dayeuhkolot';
+      _place = place;
       _pin = sample.lat != 0 ? (sample.lat, sample.lng) : _places[_place]!;
     });
   }
@@ -271,6 +295,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
     });
     try {
       final reporterId = await ref.read(reporterIdProvider.notifier).ready();
+      if (!mounted) return;
       final result = await ref.read(tipoApiProvider).submit({
         'reporter_id': reporterId,
         'channel': _channel,
@@ -289,6 +314,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
         'exif': _exif,
         'simulated': _photoFile != null || _audioFile != null,
       });
+      if (!mounted) return;
       await ref.read(boardProvider.notifier).refresh();
       if (!mounted) return;
       context.go('/mine/${result.report.id}?sent=1');
@@ -308,7 +334,14 @@ class _ReportPageState extends ConsumerState<ReportPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(boardProvider, (prev, next) {
+      final id = next.value?.activeScenario?.id;
+      final prevId = prev?.value?.activeScenario?.id;
+      if (id != prevId) _syncScenario();
+    });
     final text = Theme.of(context).textTheme;
+    final narrow = CitizenLayout.isNarrow(context);
+    final tight = CitizenLayout.isTight(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -316,35 +349,51 @@ class _ReportPageState extends ConsumerState<ReportPage> {
           icon: const Icon(Icons.close_rounded),
           onPressed: () => context.canPop() ? context.pop() : context.go('/'),
         ),
-        title: const Text('Laporan baru'),
+        title: Text(_ctx.isFire ? 'Laporan karhutla' : 'Laporan baru'),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(Space.xl - 4, Space.xs, Space.xl - 4, Space.xxl),
+        padding: CitizenLayout.pagePadding(context).copyWith(top: Space.xs),
         children: [
-          Semantics(header: true, child: Text('Ceritakan apa yang terjadi.', style: text.headlineMedium)),
+          Semantics(
+            header: true,
+            child: Text(
+              _ctx.isFire ? 'Laporkan asap atau api di sekitar Anda.' : 'Ceritakan apa yang terjadi.',
+              style: CitizenLayout.pageHeadlineStyle(context),
+            ),
+          ),
           const SizedBox(height: Space.xs),
           Text(
-            'Tell the posko what is happening. Pesan suara Sunda dan Jawa dibaca ke tiket yang sama.',
-            style: text.bodyMedium?.copyWith(color: context.muted),
+            _ctx.isFire
+                ? 'Tell the posko about smoke or peatland fire. Contoh suara dan foto asap tersedia di Mode demo.'
+                : 'Tell the posko what is happening. Pesan suara Sunda dan Jawa dibaca ke tiket yang sama.',
+            style: text.bodyMedium?.copyWith(color: context.muted, height: 1.4),
           ),
           const SizedBox(height: Space.xl),
           const SectionTitle('Jenis bahaya', step: 1),
-          Wrap(
-            spacing: Space.sm,
-            runSpacing: Space.sm,
-            children: [
-              for (final h in _hazards)
-                _BigChoice(
-                  icon: hazardIcon(h.$1),
-                  label: h.$2,
-                  sublabel: h.$3,
-                  selected: _hazard == h.$1,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _hazard = _hazard == h.$1 ? null : h.$1);
-                  },
-                ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final fullWidth = narrow ? constraints.maxWidth : null;
+              return Wrap(
+                spacing: Space.sm,
+                runSpacing: Space.sm,
+                children: [
+                  for (final h in _hazards)
+                    SizedBox(
+                      width: fullWidth,
+                      child: _BigChoice(
+                        icon: hazardIcon(h.$1),
+                        label: h.$2,
+                        sublabel: h.$3,
+                        selected: _hazard == h.$1,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setState(() => _hazard = _hazard == h.$1 ? null : h.$1);
+                        },
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: Space.xl),
           const SectionTitle('Foto', step: 2),
@@ -371,22 +420,13 @@ class _ReportPageState extends ConsumerState<ReportPage> {
           _locationSection(),
           const SizedBox(height: Space.xl),
           const SectionTitle('Bahasa pesan', step: 6),
-          SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<String>(
-              showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: 'auto', label: Text('Otomatis')),
-                ButtonSegment(value: 'id', label: Text('Bahasa')),
-                ButtonSegment(value: 'su', label: Text('Sunda')),
-                ButtonSegment(value: 'jv', label: Text('Jawa')),
-              ],
-              selected: {_language},
-              onSelectionChanged: (v) {
-                HapticFeedback.selectionClick();
-                setState(() => _language = v.first);
-              },
-            ),
+          _LanguagePicker(
+            value: _language,
+            compact: narrow,
+            onChanged: (v) {
+              HapticFeedback.selectionClick();
+              setState(() => _language = v);
+            },
           ),
           const SizedBox(height: Space.sm),
           Text('Agen intake menerjemahkan ke bahasa Inggris untuk posko.', style: text.bodySmall),
@@ -394,22 +434,30 @@ class _ReportPageState extends ConsumerState<ReportPage> {
           _demoSection(),
         ],
       ),
-      bottomNavigationBar: _SendBar(busy: _busy, error: _error, onSend: _busy ? null : _submit),
+      bottomNavigationBar: _SendBar(busy: _busy, error: _error, compact: tight, onSend: _busy ? null : _submit),
     );
   }
 
   Widget _photoSection() {
     final hasPhoto = _photoBytes != null || _photoFile != null;
     if (!hasPhoto) {
+      final narrow = CitizenLayout.isNarrow(context);
+      final camera = _TileButton(icon: Icons.photo_camera_rounded, label: 'Kamera', sublabel: 'Take photo', onTap: () => _pickPhoto(ImageSource.camera));
+      final gallery = _TileButton(icon: Icons.photo_library_rounded, label: 'Galeri', sublabel: 'Choose photo', onTap: () => _pickPhoto(ImageSource.gallery));
+      if (narrow) {
+        return Column(
+          children: [
+            camera,
+            const SizedBox(height: Space.md),
+            gallery,
+          ],
+        );
+      }
       return Row(
         children: [
-          Expanded(
-            child: _TileButton(icon: Icons.photo_camera_rounded, label: 'Kamera', sublabel: 'Take photo', onTap: () => _pickPhoto(ImageSource.camera)),
-          ),
+          Expanded(child: camera),
           const SizedBox(width: Space.md),
-          Expanded(
-            child: _TileButton(icon: Icons.photo_library_rounded, label: 'Galeri', sublabel: 'Choose photo', onTap: () => _pickPhoto(ImageSource.gallery)),
-          ),
+          Expanded(child: gallery),
         ],
       );
     }
@@ -478,6 +526,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
     final hasClip = _audioB64 != null || _audioFile != null;
     final t = _recording ? _elapsed : (_clipLength ?? Duration.zero);
     final clock = '${t.inMinutes.toString().padLeft(2, '0')}:${(t.inSeconds % 60).toString().padLeft(2, '0')}';
+    final narrow = CitizenLayout.isNarrow(context);
     return Container(
       padding: const EdgeInsets.all(Space.lg),
       decoration: BoxDecoration(
@@ -487,10 +536,17 @@ class _ReportPageState extends ConsumerState<ReportPage> {
       ),
       child: Column(
         children: [
+          if (narrow) ...[
+            Center(child: _HoldToRecord(recording: _recording, onStart: _startRecording, onStop: _stopRecording)),
+            const SizedBox(height: Space.md),
+          ],
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _HoldToRecord(recording: _recording, onStart: _startRecording, onStop: _stopRecording),
-              const SizedBox(width: Space.lg),
+              if (!narrow) ...[
+                _HoldToRecord(recording: _recording, onStart: _startRecording, onStop: _stopRecording),
+                const SizedBox(width: Space.lg),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -530,10 +586,11 @@ class _ReportPageState extends ConsumerState<ReportPage> {
             ],
           ),
           const SizedBox(height: Space.sm),
-          Row(
+          Wrap(
+            spacing: Space.xs,
+            alignment: WrapAlignment.end,
             children: [
-              TextButton.icon(onPressed: _pickAudioFile, icon: const Icon(Icons.audio_file_rounded), label: const Text('Pilih file audio')),
-              const Spacer(),
+              TextButton.icon(onPressed: _pickAudioFile, icon: const Icon(Icons.audio_file_rounded), label: Text(narrow ? 'File audio' : 'Pilih file audio')),
               if (hasClip) TextButton.icon(onPressed: _clearAudio, icon: const Icon(Icons.delete_outline_rounded), label: const Text('Hapus')),
             ],
           ),
@@ -567,7 +624,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
                       interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
                     ),
                     children: [
-                      TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'id.go.bpbd.tipo'),
+                      // Static pin preview only — OSM tiles keep widget tests from settling.
                       MarkerLayer(
                         markers: [
                           Marker(
@@ -584,17 +641,24 @@ class _ReportPageState extends ConsumerState<ReportPage> {
                 ),
                 Positioned(
                   left: Space.sm,
+                  right: Space.sm,
                   top: Space.sm,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: Space.sm + 2, vertical: 6),
-                    decoration: BoxDecoration(color: TipoColors.navy.withValues(alpha: 0.88), borderRadius: BorderRadius.circular(Radii.pill)),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(icon, size: 15, color: bandColor(band)),
-                        const SizedBox(width: 6),
-                        Text(label, style: const TextStyle(color: TipoColors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                      ],
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 280),
+                      padding: const EdgeInsets.symmetric(horizontal: Space.sm + 2, vertical: 6),
+                      decoration: BoxDecoration(color: TipoColors.navy.withValues(alpha: 0.88), borderRadius: BorderRadius.circular(Radii.pill)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(icon, size: 15, color: bandColor(band)),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(label, style: const TextStyle(color: TipoColors.white, fontSize: 11, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -682,10 +746,50 @@ class _ReportPageState extends ConsumerState<ReportPage> {
   }
 }
 
+class _LanguagePicker extends StatelessWidget {
+  const _LanguagePicker({required this.value, required this.compact, required this.onChanged});
+  final String value;
+  final bool compact;
+  final ValueChanged<String> onChanged;
+
+  static const _options = [
+    ('auto', 'Otomatis'),
+    ('id', 'Bahasa'),
+    ('su', 'Sunda'),
+    ('jv', 'Jawa'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    if (compact) {
+      return Wrap(
+        spacing: Space.sm,
+        runSpacing: Space.sm,
+        children: [
+          for (final (code, label) in _options)
+            FilterChip(
+              label: Text(label),
+              selected: value == code,
+              showCheckmark: false,
+              onSelected: (_) => onChanged(code),
+            ),
+        ],
+      );
+    }
+    return SegmentedButton<String>(
+      showSelectedIcon: false,
+      segments: [for (final (code, label) in _options) ButtonSegment(value: code, label: Text(label))],
+      selected: {value},
+      onSelectionChanged: (v) => onChanged(v.first),
+    );
+  }
+}
+
 class _SendBar extends StatelessWidget {
-  const _SendBar({required this.busy, required this.error, required this.onSend});
+  const _SendBar({required this.busy, required this.error, this.compact = false, required this.onSend});
   final bool busy;
   final String? error;
+  final bool compact;
   final VoidCallback? onSend;
 
   @override
@@ -737,7 +841,7 @@ class _SendBar extends StatelessWidget {
                 icon: busy
                     ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: TipoColors.navy))
                     : const Icon(Icons.send_rounded),
-                label: Text(busy ? 'Mengirim…' : 'Kirim ke posko · Send'),
+                label: Text(busy ? 'Mengirim…' : compact ? 'Kirim ke posko' : 'Kirim ke posko · Send'),
               ),
               const SizedBox(height: 6),
               Text('Petugas posko meninjau sebelum ada peringatan publik.', style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.center),
@@ -778,17 +882,18 @@ class _BigChoice extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.md + 2, vertical: Space.md),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(icon, size: 24, color: selected ? context.link : scheme.onSurface),
                   const SizedBox(width: Space.sm),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                      Text(sublabel, style: TextStyle(color: context.muted, fontSize: 11.5)),
-                    ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        Text(sublabel, style: TextStyle(color: context.muted, fontSize: 11.5)),
+                      ],
+                    ),
                   ),
                 ],
               ),

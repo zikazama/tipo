@@ -53,12 +53,12 @@ class _DeferredCitizen extends StatefulWidget {
 }
 
 class _DeferredCitizenState extends State<_DeferredCitizen> {
-  static Future<void>? _library;
+  late final Future<void> _library;
 
   @override
   void initState() {
     super.initState();
-    _library ??= citizen.loadLibrary();
+    _library = citizen.loadLibrary();
   }
 
   @override
@@ -124,21 +124,24 @@ class CitizenTabs extends StatelessWidget {
   Widget build(BuildContext context) {
     final index = _tabs.indexOf(location);
     if (index < 0) return child;
+    final narrow = MediaQuery.sizeOf(context).width < 400;
     return Scaffold(
       body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
+        labelBehavior: narrow ? NavigationDestinationLabelBehavior.onlyShowSelected : NavigationDestinationLabelBehavior.alwaysShow,
+        height: narrow ? 64 : 80,
         onDestinationSelected: (i) {
           HapticFeedback.selectionClick();
           context.go(_tabs[i]);
         },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Beranda', tooltip: 'Home'),
-          NavigationDestination(icon: Icon(Icons.assignment_outlined), selectedIcon: Icon(Icons.assignment_rounded), label: 'Laporan', tooltip: 'My reports'),
+        destinations: [
+          const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Beranda', tooltip: 'Home'),
+          const NavigationDestination(icon: Icon(Icons.assignment_outlined), selectedIcon: Icon(Icons.assignment_rounded), label: 'Laporan', tooltip: 'My reports'),
           NavigationDestination(
-            icon: Icon(Icons.notifications_outlined),
-            selectedIcon: Icon(Icons.notifications_rounded),
-            label: 'Kotak masuk',
+            icon: const Icon(Icons.notifications_outlined),
+            selectedIcon: const Icon(Icons.notifications_rounded),
+            label: narrow ? 'Masuk' : 'Kotak masuk',
             tooltip: 'Alerts inbox',
           ),
         ],

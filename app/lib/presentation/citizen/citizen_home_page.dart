@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
+import '../../domain/citizen_context.dart';
 import '../../domain/models.dart';
 import '../state/citizen_providers.dart';
 import '../state/providers.dart';
 import '../widgets/badges.dart';
+import '../widgets/citizen_layout.dart';
 import '../widgets/states.dart';
 import 'report_progress.dart';
 
@@ -20,23 +22,20 @@ class CitizenHomePage extends ConsumerStatefulWidget {
 }
 
 class _CitizenHomePageState extends ConsumerState<CitizenHomePage> {
-  static const _lat = -6.9755;
-  static const _lng = 107.6250;
   var _standby = true;
   var _announced = false;
+  String? _presenceKey;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _sendPresence());
-  }
-
-  Future<void> _sendPresence() async {
-    if (!_standby || _announced) return;
+  Future<void> _sendPresence(CitizenContext ctx) async {
+    if (!_standby) return;
+    final key = '${ctx.placeShort}:${ctx.lat},${ctx.lng}';
+    if (_announced && _presenceKey == key) return;
     _announced = true;
+    _presenceKey = key;
     try {
       final reporterId = await ref.read(reporterIdProvider.notifier).ready();
-      await ref.read(tipoApiProvider).presence(reporterId: reporterId, lat: _lat, lng: _lng);
+      if (!mounted) return;
+      await ref.read(tipoApiProvider).presence(reporterId: reporterId, lat: ctx.lat, lng: ctx.lng);
     } catch (_) {}
   }
 
@@ -45,10 +44,23 @@ class _CitizenHomePageState extends ConsumerState<CitizenHomePage> {
     final reporter = ref.watch(reporterIdProvider);
     final board = ref.watch(boardProvider);
     final text = Theme.of(context).textTheme;
+    final narrow = CitizenLayout.isNarrow(context);
+    final ctx = board.maybeWhen(
+      data: (snap) => CitizenContext.fromScenario(snap.activeScenario),
+      orElse: () => CitizenContext.flood,
+    );
+    ref.listen(boardProvider, (prev, next) {
+      final snap = next.value;
+      if (snap == null) return;
+      _sendPresence(CitizenContext.fromScenario(snap.activeScenario));
+    });
+
     final alerts = board.maybeWhen(
       data: (snap) => snap.notifications.where((n) => n.reporterId == reporter && n.type == 'nearby_alert').toList(),
       orElse: () => const <Notice>[],
     );
+    final headlineStyle = CitizenLayout.pageHeadlineStyle(context);
+
     return SafeArea(
       child: RefreshIndicator(
         color: TipoColors.orange,
@@ -57,11 +69,11 @@ class _CitizenHomePageState extends ConsumerState<CitizenHomePage> {
           await ref.read(boardProvider.notifier).refresh();
         },
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(Space.xl - 4, Space.md, Space.xl - 4, Space.xxl),
+          padding: CitizenLayout.pagePadding(context).copyWith(top: Space.md),
           children: [
             Row(
               children: [
-                const Wordmark(),
+                Wordmark(compact: narrow),
                 const Spacer(),
                 if (kIsWeb)
                   IconButton(
@@ -71,35 +83,46 @@ class _CitizenHomePageState extends ConsumerState<CitizenHomePage> {
                   ),
               ],
             ),
-            const SizedBox(height: Space.xl),
-            Text('Halo, warga Dayeuhkolot', style: text.titleSmall?.copyWith(color: context.muted)),
+            const SizedBox(height: Space.lg),
+            Text(ctx.greeting, style: text.titleSmall?.copyWith(color: context.muted, fontSize: narrow ? 13.5 : null)),
             const SizedBox(height: Space.xs),
-            Semantics(header: true, child: Text('Lihat tanda bahaya?\nLaporkan ke posko.', style: text.headlineLarge)),
+            Semantics(header: true, child: Text(ctx.headlineId, style: headlineStyle)),
             const SizedBox(height: Space.sm),
-            Text('Read the signs. Act first.', style: text.titleSmall?.copyWith(color: context.link)),
-            const SizedBox(height: Space.xl),
-            _ReportNowButton(onPressed: () => context.push('/report')),
+            Text('Read the signs. Act first.', style: text.titleSmall?.copyWith(color: context.link, fontSize: narrow ? 13.5 : null)),
+            if (ctx.isFire) ...[
+              const SizedBox(height: Space.md),
+              const _ScenarioChip(
+                icon: Icons.local_fire_department_rounded,
+                label: 'Drill aktif: karhutla Pelalawan',
+                detail: 'Asap, lahan gambut, dan damkar',
+              ),
+            ],
+            const SizedBox(height: Space.lg),
+            _ReportNowButton(onPressed: () => context.push('/report'), compact: narrow, fire: ctx.isFire),
             const SizedBox(height: Space.md),
             Text(
-              'Foto, pesan suara, atau beberapa kata sudah cukup. Petugas posko menyetujui setiap peringatan publik.',
-              style: text.bodyMedium?.copyWith(color: context.muted),
+              ctx.isFire
+                  ? 'Foto asap, pesan suara, atau beberapa kata sudah cukup. Petugas posko menyetujui setiap peringatan publik.'
+                  : 'Foto, pesan suara, atau beberapa kata sudah cukup. Petugas posko menyetujui setiap peringatan publik.',
+              style: text.bodyMedium?.copyWith(color: context.muted, height: 1.45, fontSize: narrow ? 13.5 : null),
             ),
             if (alerts.isNotEmpty) ...[
               const SizedBox(height: Space.xl),
               _AlertBanner(notice: alerts.last, onOpen: () => context.go('/inbox')),
             ],
             const SizedBox(height: Space.xl),
-            const _BmkgCard(),
+            _BmkgCard(preferredAreaKey: ctx.bmkgAreaKey, fireMode: ctx.isFire),
             const SizedBox(height: Space.md),
             _StandbyCard(
+              title: ctx.standbyTitle,
               on: _standby,
               onChanged: (value) {
                 HapticFeedback.selectionClick();
-                setState(() => _standby = value);
-                if (value) {
-                  _announced = false;
-                  _sendPresence();
-                }
+                setState(() {
+                  _standby = value;
+                  if (value) _announced = false;
+                });
+                if (value) _sendPresence(ctx);
               },
             ),
             const SizedBox(height: Space.xl),
@@ -117,9 +140,11 @@ class _CitizenHomePageState extends ConsumerState<CitizenHomePage> {
               data: (snap) {
                 final mine = snap.reports.where((r) => r.reporterId == reporter).toList().reversed.toList();
                 if (mine.isEmpty) {
-                  return const _InlineNote(
+                  return _InlineNote(
                     icon: Icons.assignment_outlined,
-                    text: 'Belum ada laporan dari perangkat ini. Laporan Anda dan statusnya akan muncul di sini.',
+                    text: ctx.isFire
+                        ? 'Belum ada laporan dari perangkat ini. Contoh karhutla Segati akan muncul setelah Anda kirim laporan.'
+                        : 'Belum ada laporan dari perangkat ini. Laporan Anda dan statusnya akan muncul di sini.',
                   );
                 }
                 return Column(
@@ -145,15 +170,53 @@ Incident? _incidentFor(BoardSnapshot snap, CitizenReport report) {
   return match.isEmpty ? null : match.first;
 }
 
-class _ReportNowButton extends StatelessWidget {
-  const _ReportNowButton({required this.onPressed});
-  final VoidCallback onPressed;
+class _ScenarioChip extends StatelessWidget {
+  const _ScenarioChip({required this.icon, required this.label, required this.detail});
+  final IconData icon;
+  final String label;
+  final String detail;
 
   @override
   Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: Space.md, vertical: Space.sm),
+      decoration: BoxDecoration(
+        color: TipoColors.orangeTint,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: TipoColors.orange.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: TipoColors.orangeInk, size: 20),
+          const SizedBox(width: Space.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(color: TipoColors.navy, fontWeight: FontWeight.w700, fontSize: 13)),
+                Text(detail, style: TextStyle(color: TipoColors.inkSoft, fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportNowButton extends StatelessWidget {
+  const _ReportNowButton({required this.onPressed, required this.compact, this.fire = false});
+  final VoidCallback onPressed;
+  final bool compact;
+  final bool fire;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = fire ? 'Lapor karhutla' : 'Lapor sekarang';
+    final subtitle = fire ? 'Report peatland fire' : 'Report now';
     return Semantics(
       button: true,
-      label: 'Lapor sekarang. Report now.',
+      label: '$title. $subtitle.',
       child: ExcludeSemantics(
         child: Material(
           color: TipoColors.orange,
@@ -166,7 +229,8 @@ class _ReportNowButton extends StatelessWidget {
               onPressed();
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: Space.xl, vertical: Space.lg + 4),
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(horizontal: compact ? Space.lg : Space.xl, vertical: compact ? Space.lg : Space.lg + 4),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(Radii.xl),
                 boxShadow: [BoxShadow(color: TipoColors.orange.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 10))],
@@ -174,23 +238,36 @@ class _ReportNowButton extends StatelessWidget {
               child: Row(
                 children: [
                   Container(
-                    width: 56,
-                    height: 56,
+                    width: compact ? 48 : 56,
+                    height: compact ? 48 : 56,
                     decoration: const BoxDecoration(color: TipoColors.navy, shape: BoxShape.circle),
-                    child: const Icon(Icons.add_a_photo_rounded, color: TipoColors.white, size: 28),
+                    child: Icon(
+                      fire ? Icons.local_fire_department_rounded : Icons.add_a_photo_rounded,
+                      color: TipoColors.white,
+                      size: compact ? 24 : 28,
+                    ),
                   ),
-                  const SizedBox(width: Space.lg),
+                  SizedBox(width: compact ? Space.md : Space.lg),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Lapor sekarang', style: displayStyle(size: 24, color: TipoColors.navy, weight: FontWeight.w800)),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            style: displayStyle(size: compact ? 20 : 22, color: TipoColors.navy, weight: FontWeight.w800),
+                          ),
+                        ),
                         const SizedBox(height: 2),
-                        const Text('Report now', style: TextStyle(color: TipoColors.navy, fontWeight: FontWeight.w600, fontSize: 15)),
+                        Text(subtitle, style: TextStyle(color: TipoColors.navy, fontWeight: FontWeight.w600, fontSize: compact ? 13.5 : 15)),
                       ],
                     ),
                   ),
-                  const Icon(Icons.arrow_forward_rounded, color: TipoColors.navy, size: 28),
+                  const SizedBox(width: Space.sm),
+                  Icon(Icons.arrow_forward_rounded, color: TipoColors.navy, size: compact ? 24 : 28),
                 ],
               ),
             ),
@@ -245,7 +322,9 @@ class _AlertBanner extends StatelessWidget {
 }
 
 class _BmkgCard extends ConsumerWidget {
-  const _BmkgCard();
+  const _BmkgCard({required this.preferredAreaKey, required this.fireMode});
+  final String preferredAreaKey;
+  final bool fireMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -266,8 +345,12 @@ class _BmkgCard extends ConsumerWidget {
             TextButton(onPressed: () => ref.invalidate(bmkgProvider), child: const Text('Coba lagi')),
           ],
         ),
-        data: (b) {
-          final heavy = b.rainMm >= 20;
+        data: (raw) {
+          final b = raw.forArea(preferredAreaKey);
+          final haze = fireMode || b.fireRisk.isNotEmpty || b.weatherEn.toLowerCase().contains('haze');
+          final heavy = !haze && b.rainMm >= 20;
+          final titleId = haze ? 'Kabut asap' : heavy ? 'Hujan lebat' : 'Berawan';
+          final icon = haze ? Icons.local_fire_department_rounded : heavy ? Icons.thunderstorm_rounded : Icons.cloud_rounded;
           return Semantics(
             container: true,
             label: 'BMKG ${b.area}: ${b.weatherEn}, ${b.rainMm.round()} millimetres in ${b.period}.',
@@ -283,21 +366,26 @@ class _BmkgCard extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: Space.sm, vertical: 2),
                         decoration: BoxDecoration(border: Border.all(color: TipoColors.navyLine), borderRadius: BorderRadius.circular(Radii.pill)),
-                        child: const Text('Data drill', style: TextStyle(color: TipoColors.muted, fontSize: 11)),
+                        child: Text(haze ? 'Drill asap' : 'Data drill', style: const TextStyle(color: TipoColors.muted, fontSize: 11)),
                       ),
                   ],
                 ),
                 const SizedBox(height: Space.md),
                 Row(
                   children: [
-                    Icon(heavy ? Icons.thunderstorm_rounded : Icons.cloud_rounded, color: TipoColors.white, size: 44),
+                    Icon(icon, color: TipoColors.white, size: 44),
                     const SizedBox(width: Space.md),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(heavy ? 'Hujan lebat' : 'Berawan', style: displayStyle(size: 22, color: TipoColors.white)),
-                          Text('${b.weatherEn} · ${b.rainMm.round()} mm / ${b.period}', style: const TextStyle(color: TipoColors.text, fontSize: 13.5)),
+                          Text(titleId, style: displayStyle(size: 22, color: TipoColors.white)),
+                          Text(
+                            haze
+                                ? '${b.weatherEn} · risiko api ${b.fireRisk.isEmpty ? 'tinggi' : b.fireRisk}'
+                                : '${b.weatherEn} · ${b.rainMm.round()} mm / ${b.period}',
+                            style: const TextStyle(color: TipoColors.text, fontSize: 13.5),
+                          ),
                         ],
                       ),
                     ),
@@ -328,7 +416,8 @@ class _BmkgCard extends ConsumerWidget {
 }
 
 class _StandbyCard extends StatelessWidget {
-  const _StandbyCard({required this.on, required this.onChanged});
+  const _StandbyCard({required this.title, required this.on, required this.onChanged});
+  final String title;
   final bool on;
   final ValueChanged<bool> onChanged;
 
@@ -341,7 +430,7 @@ class _StandbyCard extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: Space.lg, vertical: Space.xs),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.lg)),
         secondary: Icon(Icons.share_location_rounded, color: context.link),
-        title: const Text('Siaga di Dayeuhkolot', style: TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('Terima peringatan sekitar dari posko. Standby for nearby alerts.', style: TextStyle(color: context.muted, fontSize: 13)),
       ),
     );

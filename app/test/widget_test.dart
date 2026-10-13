@@ -31,16 +31,21 @@ void main() {
         overrides: [
           tipoApiProvider.overrideWithValue(api ?? FakeTipoApi(board: seed)),
           locatorProvider.overrideWithValue(const NoGpsLocator()),
+          reporterIdProvider.overrideWith(TestReporterController.new),
           if (seed != null) boardSeedProvider.overrideWithValue(seed),
         ],
         child: MaterialApp.router(theme: citizenTheme(), routerConfig: router),
       ),
     );
-    if (at != null) router.go(at);
     await tester.pump();
-    // Second pump finishes deferred citizen loadLibrary() and ops post-frame map mount.
+    if (at != null) router.go(at);
+    // Extra pumps finish deferred citizen loadLibrary() and route transitions.
+    await tester.pump();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
+    // Citizen route transitions are 240ms; allow extra frames when the deferred
+    // library was already loaded by an earlier test in this file.
+    await tester.pump(const Duration(milliseconds: 300));
     return router;
   }
 
@@ -49,6 +54,8 @@ void main() {
     expect(find.text('Lapor sekarang'), findsOneWidget);
     expect(find.text('Report now'), findsOneWidget);
     expect(find.text('Read the signs. Act first.'), findsOneWidget);
+    // Let citizen presence / BMKG microtasks finish before the next test reuses the isolate.
+    await tester.pump(const Duration(milliseconds: 500));
   });
 
   testWidgets('empty report explains what is missing', (tester) async {

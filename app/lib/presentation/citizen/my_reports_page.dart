@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../domain/insights.dart';
 import '../state/citizen_providers.dart';
 import '../state/providers.dart';
+import '../widgets/citizen_layout.dart';
 import '../widgets/states.dart';
 import 'citizen_home_page.dart';
 import 'report_progress.dart';
@@ -21,7 +22,7 @@ class MyReportsPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('Laporan saya')),
       body: board.when(
         loading: () => ListView(
-          padding: const EdgeInsets.all(Space.lg),
+          padding: CitizenLayout.listPadding(context),
           children: const [Skeleton(height: 96), SizedBox(height: Space.sm), Skeleton(height: 96), SizedBox(height: Space.sm), Skeleton(height: 96)],
         ),
         error: (error, _) => ErrorState(message: 'Laporan belum bisa dimuat. $error', onRetry: () => ref.read(boardProvider.notifier).refresh()),
@@ -39,7 +40,7 @@ class MyReportsPage extends ConsumerWidget {
             color: TipoColors.orange,
             onRefresh: () => ref.read(boardProvider.notifier).refresh(),
             child: ListView.separated(
-              padding: const EdgeInsets.all(Space.lg),
+              padding: CitizenLayout.listPadding(context),
               itemCount: mine.length,
               separatorBuilder: (_, _) => const SizedBox(height: Space.sm),
               itemBuilder: (context, index) {
@@ -86,8 +87,9 @@ class ReportStatusPage extends ConsumerWidget {
           final steps = reportProgress(report, incident);
           final original = report.transcript.isEmpty ? report.text : report.transcript;
           final english = report.translationEn;
+          final narrow = CitizenLayout.isNarrow(context);
           return ListView(
-            padding: const EdgeInsets.fromLTRB(Space.xl - 4, Space.xs, Space.xl - 4, Space.xxl),
+            padding: CitizenLayout.pagePadding(context).copyWith(top: Space.xs),
             children: [
               const _SentHero(),
               const SizedBox(height: Space.xl),
@@ -165,13 +167,23 @@ class ReportStatusPage extends ConsumerWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: Space.lg),
-              Row(
-                children: [
-                  Expanded(child: OutlinedButton.icon(onPressed: () => context.go('/inbox'), icon: const Icon(Icons.notifications_rounded), label: const Text('Kotak masuk'))),
-                  const SizedBox(width: Space.md),
-                  Expanded(child: FilledButton.icon(onPressed: () => context.go('/'), icon: const Icon(Icons.home_rounded), label: const Text('Beranda'))),
-                ],
-              ),
+              if (narrow)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    OutlinedButton.icon(onPressed: () => context.go('/inbox'), icon: const Icon(Icons.notifications_rounded), label: const Text('Kotak masuk')),
+                    const SizedBox(height: Space.sm),
+                    FilledButton.icon(onPressed: () => context.go('/'), icon: const Icon(Icons.home_rounded), label: const Text('Beranda')),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(child: OutlinedButton.icon(onPressed: () => context.go('/inbox'), icon: const Icon(Icons.notifications_rounded), label: const Text('Kotak masuk'))),
+                    const SizedBox(width: Space.md),
+                    Expanded(child: FilledButton.icon(onPressed: () => context.go('/'), icon: const Icon(Icons.home_rounded), label: const Text('Beranda'))),
+                  ],
+                ),
             ],
           );
         },

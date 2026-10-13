@@ -62,6 +62,9 @@ class BmkgBrief {
     required this.nowcast,
     required this.recorded,
     required this.quake,
+    this.fireRisk = '',
+    this.areaKey = '',
+    this.areas = const {},
   });
   final String area;
   final String weatherEn;
@@ -70,26 +73,80 @@ class BmkgBrief {
   final String nowcast;
   final bool recorded;
   final String quake;
+  final String fireRisk;
+  final String areaKey;
+  final Map<String, BmkgBrief> areas;
+
+  BmkgBrief forArea(String key) {
+    if (key.isEmpty) return this;
+    return areas[key] ?? this;
+  }
 
   factory BmkgBrief.fromJson(Map<String, dynamic> json) {
     final live = asMap(json['live']);
     final source = live.isNotEmpty && asMap(live['areas']).isNotEmpty ? live : asMap(json['recorded']);
-    final area = asMap(asMap(source['areas'])['dayeuhkolot']);
+    final rawAreas = asMap(source['areas']);
     final nowcast = source['nowcast'] is List && (source['nowcast'] as List).isNotEmpty ? asMap((source['nowcast'] as List).first) : <String, dynamic>{};
     final quake = asMap(source['earthquake']);
+    final nowcastTitle = '${nowcast['title'] ?? ''}';
+    final quakeLabel = quake.isEmpty ? '' : 'M${quake['magnitude']} · ${quake['place'] ?? ''}';
+
+    BmkgBrief parseArea(String key, Map<String, dynamic> area) {
+      return BmkgBrief(
+        area: '${area['name'] ?? key}'.split(',').first,
+        weatherEn: '${area['weather_desc_en'] ?? 'No reading'}',
+        rainMm: asDouble(area['tp_mm']),
+        period: '${area['period'] ?? '3h'}',
+        nowcast: nowcastTitle,
+        recorded: '${area['source'] ?? 'scenario_snapshot'}' == 'scenario_snapshot',
+        quake: quakeLabel,
+        fireRisk: '${area['fire_risk'] ?? ''}',
+        areaKey: key,
+      );
+    }
+
+    final parsed = <String, BmkgBrief>{};
+    for (final entry in rawAreas.entries) {
+      parsed[entry.key] = parseArea(entry.key, asMap(entry.value));
+    }
+
+    // Prefer flood then karhutla primary keys; otherwise first area in the snapshot.
+    BmkgBrief? primary;
+    for (final key in const ['dayeuhkolot', 'segati']) {
+      if (parsed.containsKey(key)) {
+        primary = parsed[key];
+        break;
+      }
+    }
+    primary ??= parsed.isNotEmpty ? parsed.values.first : null;
+    primary ??= BmkgBrief(
+      area: 'Area drill',
+      weatherEn: 'No reading',
+      rainMm: 0,
+      period: '3h',
+      nowcast: nowcastTitle,
+      recorded: true,
+      quake: quakeLabel,
+    );
+
     return BmkgBrief(
-      area: '${area['name'] ?? 'Dayeuhkolot, Kab. Bandung'}'.split(',').first,
-      weatherEn: '${area['weather_desc_en'] ?? 'No reading'}',
-      rainMm: asDouble(area['tp_mm']),
-      period: '${area['period'] ?? '3h'}',
-      nowcast: '${nowcast['title'] ?? ''}',
-      recorded: '${area['source'] ?? 'scenario_snapshot'}' == 'scenario_snapshot',
-      quake: quake.isEmpty ? '' : 'M${quake['magnitude']} · ${quake['place'] ?? ''}',
+      area: primary.area,
+      weatherEn: primary.weatherEn,
+      rainMm: primary.rainMm,
+      period: primary.period,
+      nowcast: primary.nowcast,
+      recorded: primary.recorded,
+      quake: primary.quake,
+      fireRisk: primary.fireRisk,
+      areaKey: primary.areaKey,
+      areas: parsed,
     );
   }
 }
 
 final bmkgProvider = FutureProvider<BmkgBrief>((ref) async {
+  // Refresh BMKG when the active drill changes (flood ↔ karhutla).
+  ref.watch(boardProvider.select((async) => async.value?.activeScenario?.id));
   final json = await ref.read(tipoApiProvider).bmkg();
   return BmkgBrief.fromJson(json);
 });

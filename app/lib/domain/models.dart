@@ -317,6 +317,7 @@ class ReportSample {
     required this.audioFile,
     required this.imageCues,
     required this.exif,
+    this.hazardHint = '',
   });
   final String id;
   final String label;
@@ -330,6 +331,7 @@ class ReportSample {
   final String? audioFile;
   final List<String> imageCues;
   final Map<String, dynamic>? exif;
+  final String hazardHint;
   factory ReportSample.fromJson(Map<String, dynamic> json) => ReportSample(
         id: '${json['id']}',
         label: '${json['label'] ?? 'Sample'}',
@@ -343,6 +345,7 @@ class ReportSample {
         audioFile: json['audio_file']?.toString(),
         imageCues: asStrings(json['image_cues']),
         exif: json['exif'] == null ? null : asMap(json['exif']),
+        hazardHint: '${json['hazard_hint'] ?? ''}',
       );
 }
 

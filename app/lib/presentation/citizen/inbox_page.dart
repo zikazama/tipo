@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../domain/models.dart';
 import '../state/citizen_providers.dart';
 import '../state/providers.dart';
+import '../widgets/citizen_layout.dart';
 import '../widgets/states.dart';
 
 /// Messages the posko sent to this device. In mock mode they arrive through
@@ -20,7 +21,7 @@ class InboxPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('Kotak masuk')),
       body: board.when(
         loading: () => ListView(
-          padding: const EdgeInsets.all(Space.lg),
+          padding: CitizenLayout.listPadding(context),
           children: const [Skeleton(height: 110), SizedBox(height: Space.sm), Skeleton(height: 110)],
         ),
         error: (error, _) => ErrorState(message: 'Pesan belum bisa dimuat. $error', onRetry: () => ref.read(boardProvider.notifier).refresh()),
@@ -37,7 +38,7 @@ class InboxPage extends ConsumerWidget {
             color: TipoColors.orange,
             onRefresh: () => ref.read(boardProvider.notifier).refresh(),
             child: ListView.separated(
-              padding: const EdgeInsets.all(Space.lg),
+              padding: CitizenLayout.listPadding(context),
               itemCount: mine.length + 1,
               separatorBuilder: (_, _) => const SizedBox(height: Space.md),
               itemBuilder: (context, index) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import 'citizen_layout.dart';
 
 class EmptyState extends StatelessWidget {
   const EmptyState({super.key, required this.icon, required this.title, required this.body, this.action});
@@ -113,7 +114,7 @@ class SectionTitle extends StatelessWidget {
             ),
             const SizedBox(width: Space.sm + 2),
           ],
-          Expanded(child: Semantics(header: true, child: Text(title, style: Theme.of(context).textTheme.titleLarge))),
+          Expanded(child: Semantics(header: true, child: Text(title, style: CitizenLayout.sectionTitleStyle(context)))),
           ?trailing,
         ],
       ),
